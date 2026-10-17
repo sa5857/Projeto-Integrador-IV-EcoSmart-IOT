@@ -1,0 +1,131 @@
+
+import csv
+import sqlite3
+from pathlib import Path
+
+# Caminho da pasta onde este programa está salvo
+PASTA_PROJETO = Path(__file__).resolve().parent
+
+# Arquivos do projeto
+ARQUIVO_CSV = PASTA_PROJETO / "dados_sensores.csv"
+BANCO_DADOS = PASTA_PROJETO / "ecosense.db"
+
+
+def criar_tabela(conexao):
+    """Cria a tabela para armazenar as leituras."""
+
+    conexao.execute("""
+        CREATE TABLE IF NOT EXISTS leituras_sensores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_hora TEXT NOT NULL UNIQUE,
+            temperatura_c REAL NOT NULL,
+            umidade_percentual REAL NOT NULL,
+            luminosidade_lux INTEGER NOT NULL,
+            qualidade_ar_indice_simulado INTEGER NOT NULL,
+            consumo_energia_w REAL NOT NULL
+        )
+    """)
+
+    conexao.commit()
+
+
+def importar_csv(conexao):
+    """Lê o CSV e grava as leituras no SQLite."""
+
+    if not ARQUIVO_CSV.exists():
+        print("Erro: arquivo dados_sensores.csv não encontrado.")
+        print("Execute primeiro o programa simulador.py.")
+        return
+
+    quantidade_importada = 0
+
+    with open(
+        ARQUIVO_CSV,
+        "r",
+        newline="",
+        encoding="utf-8"
+    ) as arquivo:
+
+        leitor = csv.DictReader(arquivo)
+
+        for linha in leitor:
+            cursor = conexao.execute("""
+                INSERT OR IGNORE INTO leituras_sensores (
+                    data_hora,
+                    temperatura_c,
+                    umidade_percentual,
+                    luminosidade_lux,
+                    qualidade_ar_indice_simulado,
+                    consumo_energia_w
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                linha["data_hora"],
+                float(linha["temperatura_c"]),
+                float(linha["umidade_percentual"]),
+                int(linha["luminosidade_lux"]),
+                int(linha["qualidade_ar_indice_simulado"]),
+                float(linha["consumo_energia_w"])
+            ))
+
+            quantidade_importada += cursor.rowcount
+
+    conexao.commit()
+
+    print(f"Novas leituras importadas: {quantidade_importada}")
+
+
+def consultar_leituras(conexao):
+    """Exibe as cinco leituras mais recentes."""
+
+    resultado = conexao.execute("""
+        SELECT
+            id,
+            data_hora,
+            temperatura_c,
+            umidade_percentual,
+            luminosidade_lux
+        FROM leituras_sensores
+        ORDER BY data_hora DESC
+        LIMIT 5
+    """)
+
+    print("\nCinco leituras mais recentes:")
+    print("-" * 75)
+
+    for registro in resultado.fetchall():
+        print(registro)
+
+
+def mostrar_total(conexao):
+    """Conta quantas leituras estão armazenadas."""
+
+    resultado = conexao.execute("""
+        SELECT COUNT(*) FROM leituras_sensores
+    """)
+
+    total = resultado.fetchone()[0]
+
+    print(f"\nTotal de leituras no banco: {total}")
+
+
+def main():
+    # Verifica se o CSV existe antes de criar o banco
+    if not ARQUIVO_CSV.exists():
+        print("Arquivo CSV não encontrado.")
+        print("Execute primeiro: python simulador.py")
+        return
+
+    # Cria ou abre o banco SQLite
+    with sqlite3.connect(BANCO_DADOS) as conexao:
+        criar_tabela(conexao)
+        importar_csv(conexao)
+        mostrar_total(conexao)
+        consultar_leituras(conexao)
+
+    print(f"\nBanco de dados: {BANCO_DADOS.name}")
+    print("Etapa 2 concluída!")
+
+
+if __name__ == "__main__":
+    main()
